@@ -20,7 +20,6 @@ void BiinoInput::Setup(void)
   this->biino_input->begin();
   this->biino_input->gpioPinMode(OUTPUT);
   this->DeselectAll();
-  delay(250);
   this->Select(EEPROM[this->ee_addr_cur_channel]);
 }
 
@@ -28,12 +27,13 @@ bool BiinoInput::IsChannelValid(uint8_t channel)
 {
   if((this->channel_mask & channel) != 0)
     return true;
+
   return false;
 }
 
 void BiinoInput::DeselectAll(void)
 {
-  // deselect all channels, also modifies output pins not used by biino!
+  // deselect all channels immediately, also modifies output pins not used by biino!
   this->biino_input->gpioPort(0);
 }
 
@@ -41,8 +41,16 @@ int BiinoInput::Select(uint8_t channel)
 {
   if(this->IsChannelValid(channel))
     {
-      this->DeselectAll();
-      delay(200);
+      if(this->biino_input->readGpioPort() != 0)
+        {
+          this->DeselectAll();
+        }
+
+      if(this->channel_switch_delay > 0)
+        {
+          delay(this->channel_switch_delay);
+        }
+
       this->biino_input->gpioPort(channel);
       EEPROM.update(this->ee_addr_cur_channel,channel);
       return EXIT_SUCCESS;

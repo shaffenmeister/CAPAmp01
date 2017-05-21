@@ -33,7 +33,8 @@ class BiinoInput
     uint8_t biino_id; // more than one input boards supported, first = 0, second = 1, ...
     uint8_t channel_mask;
     uint8_t ee_addr_cur_channel;
-        
+    uint16_t channel_switch_delay = 200;
+            
   protected:
     mcp23s08* biino_input; // (PIN_CS_BIINO_VOL,ADDR_BIINO_VOL,MAXSPISPEED);
 
