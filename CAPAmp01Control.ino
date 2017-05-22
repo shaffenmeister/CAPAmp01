@@ -30,9 +30,10 @@ const int PIN_AMP_MUTE = 15;
 const int INPUT_CHANNEL_CNT = 3;
 const int INPUT_CHANNEL_INV = -1;
 const int EE_BIINO_CHAN = 100;
-const int EE_BIINO_VOL_START = 101;
-const int EE_BIINO_VOL_END = 102;
-const int EE_BIINO_VOL = 103;
+const int EE_BIINO_VOL = 101;
+const int EE_BIINO_VOL_START = 102;
+const int EE_BIINO_VOL_END = 103;
+
 
 const int ADDR_BIINO_VOL = 0x20;
 const int ADDR_BIINO_INP = 0x21;
@@ -44,7 +45,7 @@ IRdecode g_ir_decoder;
 IRrecvPCI g_ir_receiver(PIN_IR_RCV);
 
 BiinoInput g_biino_input(0,(uint8_t)((1<<INPUT_CHANNEL_CNT) - 1),PIN_CS_BIINO_VOL,ADDR_BIINO_INP,EE_BIINO_CHAN);
-//BiinoInput g_biino_volume(0,PIN_CS_BIINO_VOL,ADDR_BIINO_VOL);
+BiinoVolume g_biino_volume(0,PIN_CS_BIINO_VOL,ADDR_BIINO_VOL,EE_BIINO_VOL);
 
 void setup() {
   // Setup serial port
@@ -63,7 +64,11 @@ void setup() {
   Serial.print("\tCurrent channel: ");
   Serial.println(g_biino_input.GetCurrentChannel(),BIN);
   Serial.println("Setting up Biino Input...Done.");  
-  
+
+  Serial.println("Setting up Biino Volume...");
+  g_biino_volume.Setup();
+  Serial.println("Setting up Biino Volume...Done.");    
+
   // Setup amplifier mute pin and mute amp
   setup_amp_mute();
   mute_amp();

@@ -7,7 +7,7 @@
 
 #include "BiinoMK2.h"
 
-BiinoInput::BiinoInput(uint8_t id, uint8_t channel_mask, const uint8_t pin_cs, const uint8_t spi_addr, uint8_t ee_addr_cur_channel)
+BiinoInput::BiinoInput(uint8_t id, uint8_t channel_mask, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_channel)
 {
   this->biino_id = id;
   this->biino_input = new mcp23s08(pin_cs,spi_addr,MAXSPISPEED);
@@ -46,9 +46,9 @@ int BiinoInput::Select(uint8_t channel)
           this->DeselectAll();
         }
 
-      if(this->channel_switch_delay > 0)
+      if(this->channel_switch_delay_ms > 0)
         {
-          delay(this->channel_switch_delay);
+          delay(this->channel_switch_delay_ms);
         }
 
       this->biino_input->gpioPort(channel);
@@ -144,9 +144,32 @@ int BiinoInput::GetCurrentChannelNo(void)
     return EXIT_FAILURE;
 }
 
-BiinoVolume::BiinoVolume(uint8_t id, const uint8_t pin_cs, const uint8_t spi_addr, uint8_t ee_addr)
+BiinoVolume::BiinoVolume(uint8_t id, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_volume)
 {
   this->biino_id = id;
   this->biino_volume = new mcp23s08(pin_cs,spi_addr,MAXSPISPEED);
+  this->ee_addr_cur_volume = ee_addr_cur_volume;
+}
+
+void BiinoVolume::Setup(void)
+{
+  this->biino_volume->begin();
+  this->biino_volume->gpioPinMode(OUTPUT);
+}
+
+bool BiinoVolume::IsValid(uint8_t volume)
+{
+  if(volume >= 0 && volume <= 63)
+    return true;
+
+  return false;
+}
+
+int BiinoVolume::SetVolume(uint8_t volume)
+{
+}
+
+int BiinoVolume::GetVolume(void)
+{
 }
 
