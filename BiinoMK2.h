@@ -71,6 +71,8 @@ class BiinoVolume
   public:
     uint8_t biino_id; // more than one volume boards supported, first = 0, second = 1, ...
     uint8_t ee_addr_cur_volume; // EEPROM address to store and restore the last defined volume.
+    uint16_t volume_switch_delay_ms = 0; // delay when switching volume: old volume <deselect> - <delay> - new volume <select>
+    
   protected:
     mcp23s08* biino_volume; // reference to MCP23S08
 
@@ -80,6 +82,7 @@ class BiinoVolume
     bool IsValid(uint8_t volume);
     int SetVolume(uint8_t volume);
     int GetVolume(void);
+    int IncVolume(void);
 };
 
 #endif

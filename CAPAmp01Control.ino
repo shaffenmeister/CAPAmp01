@@ -20,12 +20,12 @@
 /*
  * Definitions of constants
  */
-const int PIN_CS_BIINO_VOL = 11;
-const int PIN_CS_BIINO_INP = 11;
-const int PIN_IR_RCV = 2;
+const int PIN_CS_BIINO_VOL = SS; // 10, SS signal (PB2)
+const int PIN_CS_BIINO_INP = SS; // 10, SS signal (PB2)
+const int PIN_IR_RCV = 2; // D2, INT0 (PD2)
 
-const int PIN_BUTTON = 14;
-const int PIN_AMP_MUTE = 15;
+const int PIN_BUTTON = A0; // 14, A0 (PC0)
+const int PIN_AMP_MUTE = A1; // 15, A1 (PC1)
 
 const int INPUT_CHANNEL_CNT = 3;
 const int INPUT_CHANNEL_INV = -1;
@@ -103,30 +103,46 @@ void loop() {
           if(g_biino_input.SelectNext() == EXIT_FAILURE) 
             g_biino_input.SelectFirst();
           Serial.print("Current channel (+): ");
+          Serial.print(g_biino_input.GetCurrentChannel(),BIN);       
+          Serial.print(" / ");
+          Serial.println(g_biino_input.GetCurrentChannelNo(),DEC);       
           break;
         case '-':
           if(g_biino_input.SelectPrevious() == EXIT_FAILURE) 
             g_biino_input.SelectLast();
           Serial.print("Current channel (-): ");
+          Serial.print(g_biino_input.GetCurrentChannel(),BIN);       
+          Serial.print(" / ");
+          Serial.println(g_biino_input.GetCurrentChannelNo(),DEC);       
           break;
+        case 'M':
+          if(digitalRead(PIN_AMP_MUTE) == 1)
+          {
+            mute_amp();
+          }
+          else
+          {
+            unmute_amp();  
+          }
+          
+          Serial.print("AMP status: ");
+          Serial.println(digitalRead(PIN_AMP_MUTE));
+          break;
+        case 'v':
+          Serial.print("Current volume: ");
+          Serial.println(g_biino_volume.GetVolume(),DEC); 
+          
+          if(g_biino_volume.IncVolume() == EXIT_FAILURE) {
+            Serial.println("Error setting volume");
+            g_biino_volume.SetVolume(0);
+          }
+          Serial.print("New volume: ");
+          Serial.println(g_biino_volume.GetVolume(),DEC); 
+            
+          break;  
       } 
-      
-      Serial.print(g_biino_input.GetCurrentChannel(),BIN);       
-      Serial.print(" / ");
-      Serial.println(g_biino_input.GetCurrentChannelNo(),DEC);       
+     
     }
-}
-
-/*
- *  
- */
-
-int set_volume(int vol)
-{
-}
-
-int get_volume()
-{
 }
 
 /*
@@ -139,11 +155,6 @@ void setup_channels()
 //  g_input_channels[2] = new input_chan(3,"Auxiliary","AUX",EE_BIINO_VOL_3);
 }
 
-int set_channel(int no)
-{
-  
-}
-
 /*
  * AMP Mute and Unmute Functionality
  */
@@ -152,12 +163,12 @@ void setup_amp_mute()
   pinMode(PIN_AMP_MUTE,OUTPUT);
 }
 
-int mute_amp()
+void mute_amp()
 {
   digitalWrite(PIN_AMP_MUTE,0);
 }
 
-int unmute_amp()
+void unmute_amp()
 {
   digitalWrite(PIN_AMP_MUTE,1);
 }

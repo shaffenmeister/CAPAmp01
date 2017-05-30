@@ -33,15 +33,19 @@ bool BiinoInput::IsChannelValid(uint8_t channel)
 
 void BiinoInput::DeselectAll(void)
 {
-  // deselect all channels immediately, also modifies output pins not used by biino!
-  this->biino_input->gpioPort(0);
+  // Deselect all channels immediately, also modifies output pins not used by biino!
+  // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
+  // Inverse logic only used for direct output to / direct input from mcp23s08!
+  this->biino_input->gpioPort(0xff);
 }
 
 int BiinoInput::Select(uint8_t channel)
 {
   if(this->IsChannelValid(channel))
     {
-      if(this->biino_input->readGpioPort() != 0)
+      // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
+      // Inverse logic only used for direct output to / direct input from mcp23s08!
+      if(this->biino_input->readGpioPort() != 0xff)
         {
           this->DeselectAll();
         }
@@ -51,7 +55,11 @@ int BiinoInput::Select(uint8_t channel)
           delay(this->channel_switch_delay_ms);
         }
 
-      this->biino_input->gpioPort(channel);
+      // Enable corresponding relais on channel.
+      // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
+      // Inverse logic only used for direct output to / direct input from mcp23s08!
+      this->biino_input->gpioPort(~channel);
+
       EEPROM.update(this->ee_addr_cur_channel,channel);
       return EXIT_SUCCESS;
     }     
@@ -155,6 +163,8 @@ void BiinoVolume::Setup(void)
 {
   this->biino_volume->begin();
   this->biino_volume->gpioPinMode(OUTPUT);
+  if(this->SetVolume(EEPROM[this->ee_addr_cur_volume]) == EXIT_FAILURE)
+    this->SetVolume(0);
 }
 
 bool BiinoVolume::IsValid(uint8_t volume)
@@ -167,9 +177,33 @@ bool BiinoVolume::IsValid(uint8_t volume)
 
 int BiinoVolume::SetVolume(uint8_t volume)
 {
+    if(this->IsValid(volume))
+    {
+      if(this->volume_switch_delay_ms > 0)
+        {
+          delay(this->volume_switch_delay_ms);
+        }
+
+      // Enable corresponding relais on channel.
+      // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
+      // Inverse logic only used for direct output to / direct input from mcp23s08!
+      this->biino_volume->gpioPort(~volume);
+
+      EEPROM.update(this->ee_addr_cur_volume,volume);
+      return EXIT_SUCCESS;
+    }
+         
+  return EXIT_FAILURE;
 }
 
 int BiinoVolume::GetVolume(void)
 {
+  return EEPROM[this->ee_addr_cur_volume];
+}
+
+int BiinoVolume::IncVolume(void)
+{
+  
+  return this->SetVolume(this->GetVolume()+1);
 }
 
