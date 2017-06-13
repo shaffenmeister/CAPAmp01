@@ -92,7 +92,11 @@ void setup() {
 volatile int g_rs_cmd = 0;
 volatile uint8_t g_cur_channel = 0xFF;
 
+
 void loop() {
+  char buffer[4];
+  uint8_t n,newvol;
+  
   if(Serial.available() > 0)
     {
       g_rs_cmd = Serial.read();
@@ -129,16 +133,24 @@ void loop() {
           Serial.println(digitalRead(PIN_AMP_MUTE));
           break;
         case 'v':
+          n = Serial.readBytesUntil('#', buffer, 3);
+          buffer[n] = 0;
+           
           Serial.print("Current volume: ");
           Serial.println(g_biino_volume.GetVolume(),DEC); 
           
-          if(g_biino_volume.IncVolume() == EXIT_FAILURE) {
+ /*         if(g_biino_volume.IncVolume() == EXIT_FAILURE) {
             Serial.println("Error setting volume");
             g_biino_volume.SetVolume(0);
           }
+          */
+          
+          newvol = atoi(buffer);  
+          g_biino_volume.SetVolume(newvol);
+
           Serial.print("New volume: ");
           Serial.println(g_biino_volume.GetVolume(),DEC); 
-            
+          
           break;  
       } 
      
