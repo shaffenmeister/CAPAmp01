@@ -15,7 +15,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#include "BiinoMK2.h"
+#include "BiinoInput.h"
+#include "BiinoVolume.h"
 
 /*
  * Definitions of constants
