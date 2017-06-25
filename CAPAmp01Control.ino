@@ -17,6 +17,7 @@
 
 #include "BiinoInput.h"
 #include "BiinoVolume.h"
+#include "BiinoChannel.h"
 
 /*
  * Definitions of constants
@@ -33,11 +34,12 @@ const int INPUT_CHANNEL_INV = -1;
 const int EE_BIINO_CHAN = 100;
 const int EE_BIINO_VOL = 101;
 const int EE_BIINO_VOL_START = 102;
-const int EE_BIINO_VOL_END = 103;
+const int EE_BIINO_VOL_END = EE_BIINO_VOL_START + INPUT_CHANNEL_CNT - 1;
 
 
 const int ADDR_BIINO_VOL = 0x20;
 const int ADDR_BIINO_INP = 0x21;
+
 
 /*
  * Global variables
@@ -47,6 +49,20 @@ IRrecvPCI g_ir_receiver(PIN_IR_RCV);
 
 BiinoInput g_biino_input(0,(uint8_t)((1<<INPUT_CHANNEL_CNT) - 1),PIN_CS_BIINO_VOL,ADDR_BIINO_INP,EE_BIINO_CHAN);
 BiinoVolume g_biino_volume(0,PIN_CS_BIINO_VOL,ADDR_BIINO_VOL,EE_BIINO_VOL);
+
+/*
+BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
+  BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START, &g_biino_input), 
+  BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1, &g_biino_input),
+  BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2, &g_biino_input)
+};
+*/
+
+BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
+  BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START), 
+  BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1),
+  BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2)
+};
 
 void setup() {
   // Setup serial port
@@ -144,16 +160,6 @@ void loop() {
       } 
      
     }
-}
-
-/*
- * Inut channel management
- */
-void setup_channels()
-{
-//  g_input_channels[0] = new input_chan(1,"CD Player","CD",EE_BIINO_VOL_1);
-//  g_input_channels[1] = new input_chan(2,"Network","NET",EE_BIINO_VOL_2);
-//  g_input_channels[2] = new input_chan(3,"Auxiliary","AUX",EE_BIINO_VOL_3);
 }
 
 /*
