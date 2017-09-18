@@ -38,6 +38,8 @@ const int PIN_DC_DISP = A1; // 15, DC signal (PC1)
 const int PIN_RESET_DISP = A5; // 19, RESET signal (PC5)
 
 const int PIN_AMP_MUTE = 9; // 5, D5 (PD5)
+const int PIN_REL1 = 6; // 6, D6 (PD6)
+const int PIN_REL2 = 7; // 7, D7 (PD7)
 const int PIN_POT = A2; // 16, A2 (PC2)
 const int PIN_BUTTON = A3; // 17, A3 (PC3)
 const int PIN_IR_RCV = 2; // 2, D2, INT0 (PD2)
@@ -109,10 +111,6 @@ void setup() {
   g_biino_volume.Setup();
   Serial.println("Setting up Biino Volume...Done.");    
 
-  // Setup amplifier mute pin and mute amp
-  setup_amp_mute();
-  mute_amp();
-
   // Setup digital I/O pin directions
   pinMode(PIN_CS_BIINO_VOL,OUTPUT);
   pinMode(PIN_CS_BIINO_INP,OUTPUT);
@@ -120,6 +118,8 @@ void setup() {
   pinMode(PIN_DC_DISP,OUTPUT);
   pinMode(PIN_RESET_DISP,OUTPUT);
   pinMode(PIN_AMP_MUTE,OUTPUT);
+  pinMode(PIN_REL1,OUTPUT);  
+  pinMode(PIN_REL2,OUTPUT);  
   pinMode(PIN_BUTTON,INPUT);
   digitalWrite(PIN_BUTTON,HIGH);
   pinMode(PIN_ROT_STEP,INPUT);  
@@ -129,19 +129,25 @@ void setup() {
   
   // Setup Rotary encoder
   attachInterrupt(digitalPinToInterrupt(PIN_ROT_STEP),read_rotary,FALLING);
-
+  
+  // Assign pin change interrupts
   pciSetup(PIN_BUTTON);
   pciSetup(PIN_ROT_BUTTON);
   
   // Setup IR receiver
   g_ir_receiver.enableIRIn();
+  
+  // Mute amplifier  
+  mute_amp();
+  
+  // Init display
   u8g2.begin();
   u8g2.firstPage();
   do {
     u8g2.setFont(u8g2_font_inb19_mf); //u8g2_font_ncenB14_tr);
-    u8g2.drawStr(0,24,"Hello World!");
+    u8g2.drawStr(0,24,"Welcome!");
   } while ( u8g2.nextPage() );
-  delay(2000);
+  delay(1000);
 }
 
 volatile static int g_rs_cmd = 0;
@@ -272,11 +278,6 @@ void loop() {
 /*
  * AMP Mute and Unmute Functionality
  */
-void setup_amp_mute()
-{
-  pinMode(PIN_AMP_MUTE,OUTPUT);
-}
-
 void mute_amp()
 {
   digitalWrite(PIN_AMP_MUTE,0);
