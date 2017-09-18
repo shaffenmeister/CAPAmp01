@@ -1,3 +1,4 @@
+
 /*
  * Stock Arduino libraries
  */
@@ -7,17 +8,16 @@
 /*
  * Custom libraries
  */
+#include <U8g2lib.h>
 #include <mcp23s08.h>
-#include <IRLibDecodeBase.h>
-#include <IRLib_P03_RC5.h>
-#include <IRLibCombo.h>
-#include <IRLibRecvPCI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 
-#include "BiinoInput.h"
-#include "BiinoVolume.h"
-#include "BiinoChannel.h"
+/*
+ * Own sources
+ */
+#include "src/IRremote/IRremoteCAP.h"
+#include "src/Biino/BiinoInput.h"
+#include "src/Biino/BiinoVolume.h"
+#include "src/Biino/BiinoChannel.h"
 
 /*
  * Definitions of constants
@@ -36,33 +36,32 @@ const int EE_BIINO_VOL = 101;
 const int EE_BIINO_VOL_START = 102;
 const int EE_BIINO_VOL_END = EE_BIINO_VOL_START + INPUT_CHANNEL_CNT - 1;
 
-
 const int ADDR_BIINO_VOL = 0x20;
 const int ADDR_BIINO_INP = 0x21;
-
 
 /*
  * Global variables
  */
-IRdecode g_ir_decoder;
-IRrecvPCI g_ir_receiver(PIN_IR_RCV);
+IRrecv g_ir_receiver(PIN_IR_RCV);
+decode_results results;
+U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI u8g2(U8G2_R0, SS, A1);
 
 BiinoInput g_biino_input(0,(uint8_t)((1<<INPUT_CHANNEL_CNT) - 1),PIN_CS_BIINO_VOL,ADDR_BIINO_INP,EE_BIINO_CHAN);
 BiinoVolume g_biino_volume(0,PIN_CS_BIINO_VOL,ADDR_BIINO_VOL,EE_BIINO_VOL);
 
-/*
 BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
   BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START, &g_biino_input), 
   BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1, &g_biino_input),
   BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2, &g_biino_input)
 };
-*/
 
+/*
 BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
   BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START), 
   BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1),
   BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2)
 };
+*/
 
 void setup() {
   // Setup serial port
@@ -94,26 +93,30 @@ void setup() {
 //  pinMode(PIN_BUTTON,INPUT);
 
 
-//  g_biino_volume.begin();
-//  g_biino_input.begin();
-//  g_biino_volume.gpioPinMode(OUTPUT);
-//  g_biino_input.gpioPinMode(OUTPUT);
- 
-  
   // Setup IR receiver
   digitalPinToInterrupt(PIN_IR_RCV);
   g_ir_receiver.enableIRIn();
-  
+  u8g2.begin();
 }
 
 volatile int g_rs_cmd = 0;
 volatile uint8_t g_cur_channel = 0xFF;
 
-
 void loop() {
   char buffer[4];
   uint8_t n,newvol;
-  
+
+  if (g_ir_receiver.decode(&results)) {
+    g_ir_receiver.resume();
+  }
+  delay(100);
+  u8g2.firstPage();
+  do {
+    u8g2.setFont(u8g2_font_inb24_mf); //u8g2_font_ncenB14_tr);
+    u8g2.drawStr(0,20,"Hello World!");
+  } while ( u8g2.nextPage() );
+  delay(100);
+    
   if(Serial.available() > 0)
     {
       g_rs_cmd = Serial.read();
