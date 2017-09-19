@@ -60,21 +60,26 @@ const int ADDR_BIINO_INP = 0x21;
 
 enum class user_event {
   INVALID = -1,
-  AMP_POWER = 1,
-  AMP_MUTE = 2,
-  CHOOSE_INPUT_1 = 3,
-  CHOOSE_INPUT_2 = 4,
-  CHOOSE_INPUT_3 = 5,
-  VOL_UP = 6,
-  VOL_DOWN = 7
+  AMP_POWER,
+  AMP_MUTE,
+  INPUT_CHOOSE_1,
+  INPUT_CHOOSE_2,
+  INPUT_CHOOSE_3,
+  INPUT_CHOOSE_PREV,
+  INPUT_CHOOSE_NEXT,
+  VOL_SET,
+  VOL_UP,
+  VOL_DOWN,
+  TOGGLE_MODE         // Toggle between set volume/choose input
 };
 
 enum class sys_state {
   INVALID = -1,
   INITIAL = 1,
-  STANDBY = 2,
+  AMP_MUTE = 2,
   AMP_OFF = 3,
-  RUNNING = 4
+  RUNNING_MODE_VOL = 4,
+  RUNNING_MODE_INP = 5,  
 };
 
 /*
@@ -220,7 +225,17 @@ void loop() {
     if(button_state[0].active == true) {
       if((tcur_ms-button_state[0].tstart_ms) >= BUTTON_TIMEOUT_MS) {
         // Perform action, if user presses button longer than BUTTON_TIMEOUT_MS
-        rot_count = 0;
+        switch(state) {
+          case sys_state::RUNNING_MODE_VOL:
+            state = sys_state::RUNNING_MODE_INP;
+            break;
+          case sys_state::RUNNING_MODE_INP:
+            state = sys_state::RUNNING_MODE_VOL;
+            break;
+          default:
+            // Do nothing!
+            break;
+        }
         button_state[0].active = false;
       }
     }
@@ -232,6 +247,18 @@ void loop() {
         // Short push: MUTE ON/OFF
         // Long push: AMP ON/OFF
         rot_count = 0;
+        switch(state) {
+          case sys_state::RUNNING_MODE_VOL:
+            state = sys_state::RUNNING_MODE_INP;
+            break;
+          case sys_state::RUNNING_MODE_INP:
+            state = sys_state::RUNNING_MODE_VOL;
+            break;
+            
+          default:
+            // Do nothing!
+            break;
+        }        
         button_state[1].active = false;
         
       }
@@ -242,15 +269,17 @@ void loop() {
   switch(state)
   {
     case sys_state::INITIAL:
-      state = sys_state::RUNNING;
+      state = sys_state::RUNNING_MODE_VOL;
       break;
-    case sys_state::STANDBY:
-      state = sys_state::RUNNING;    
+    case sys_state::AMP_MUTE:
+      state = sys_state::RUNNING_MODE_VOL;    
       break;
     case sys_state::AMP_OFF:
-      state = sys_state::RUNNING;
+      state = sys_state::RUNNING_MODE_VOL;
       break;
-    case sys_state::RUNNING:
+    case sys_state::RUNNING_MODE_VOL:
+      break;
+    case sys_state::RUNNING_MODE_INP:
       break;
   }
   
