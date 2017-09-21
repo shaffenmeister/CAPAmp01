@@ -12,15 +12,15 @@ BiinoInput::BiinoInput(uint8_t id, uint8_t channel_mask, uint8_t pin_cs, uint8_t
   this->ee_addr_cur_channel = ee_addr_cur_channel;
 }
 
-void BiinoInput::Setup(void)
+void BiinoInput::setup(void)
 {
   this->biino_input->begin();
   this->biino_input->gpioPinMode(OUTPUT);
-  this->DeselectAll();
-  this->Select(EEPROM[this->ee_addr_cur_channel]);
+  this->deselectAll();
+  this->select(EEPROM[this->ee_addr_cur_channel]);
 }
 
-bool BiinoInput::IsChannelValid(uint8_t channel)
+bool BiinoInput::isChannelValid(uint8_t channel)
 {
   if((this->channel_mask & channel) != 0)
     return true;
@@ -28,7 +28,7 @@ bool BiinoInput::IsChannelValid(uint8_t channel)
   return false;
 }
 
-void BiinoInput::DeselectAll(void)
+void BiinoInput::deselectAll(void)
 {
   // Deselect all channels immediately, also modifies output pins not used by biino!
   // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
@@ -36,15 +36,15 @@ void BiinoInput::DeselectAll(void)
   this->biino_input->gpioPort(0xff);
 }
 
-int BiinoInput::Select(uint8_t channel)
+int BiinoInput::select(uint8_t channel)
 {
-  if(this->IsChannelValid(channel))
+  if(this->isChannelValid(channel))
     {
       // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
       // Inverse logic only used for direct output to / direct input from mcp23s08!
       if(this->biino_input->readGpioPort() != 0xff)
         {
-          this->DeselectAll();
+          this->deselectAll();
         }
 
       if(this->channel_switch_delay_ms > 0)
@@ -63,13 +63,13 @@ int BiinoInput::Select(uint8_t channel)
   return EXIT_FAILURE;
 }
 
-int BiinoInput::Select(bool next)
+int BiinoInput::select(bool next)
 {
   uint8_t channel;
 
-  channel = this->GetCurrentChannel();
+  channel = this->getCurrentChannel();
   
-  if(this->IsChannelValid(channel))
+  if(this->isChannelValid(channel))
     {
       if(next == true)
       // Select next channel.
@@ -78,33 +78,33 @@ int BiinoInput::Select(bool next)
       // Select previous channel.
         channel >>= 1;
       
-       return this->Select(channel);
+       return this->select(channel);
     }
 
   return EXIT_FAILURE;
 }
 
-int BiinoInput::SelectNext(void)
+int BiinoInput::selectNext(void)
 {
-  return this->Select(true);
+  return this->select(true);
 }
 
-int BiinoInput::SelectPrevious(void)
+int BiinoInput::selectPrevious(void)
 {
-  return this->Select(false);
+  return this->select(false);
 }
 
-int BiinoInput::SelectFirst(void)
+int BiinoInput::selectFirst(void)
 {
   uint8_t channel;
 
   channel = this->channel_mask;
   channel = this->channel_mask & ~(this->channel_mask - 1);
 
-  return this->Select(channel);  
+  return this->select(channel);  
 }
 
-int BiinoInput::SelectLast(void)
+int BiinoInput::selectLast(void)
 {
   uint8_t channel;
   int8_t cnt;
@@ -117,7 +117,7 @@ int BiinoInput::SelectLast(void)
       channel = 1 << cnt;
 
       if( (channel & this->channel_mask) != 0)
-        return this->Select(channel);
+        return this->select(channel);
 
       cnt--;
     }
@@ -125,25 +125,25 @@ int BiinoInput::SelectLast(void)
    return EXIT_FAILURE;    
 }
 
-uint8_t BiinoInput::GetCurrentChannel(void)
+uint8_t BiinoInput::getCurrentChannel(void)
 {
   uint8_t channel;
 
   channel = EEPROM[this->ee_addr_cur_channel];
 
-  if(this->IsChannelValid(channel))
+  if(this->isChannelValid(channel))
     return channel;
   else
     return 0xFF;
 }
 
-int BiinoInput::GetCurrentChannelNo(void)
+int BiinoInput::getCurrentChannelNo(void)
 {
   uint8_t channel;
 
-  channel = this->GetCurrentChannel();
+  channel = this->getCurrentChannel();
   
-  if(this->IsChannelValid(channel))
+  if(this->isChannelValid(channel))
     return (channel >> 1) + 1;
   else
     return EXIT_FAILURE;

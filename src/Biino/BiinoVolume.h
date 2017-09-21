@@ -33,11 +33,12 @@ class BiinoVolume
 
   public:  
     BiinoVolume(uint8_t id, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_volume);
-    void Setup();
-    bool IsValid(uint8_t volume);
-    int SetVolume(uint8_t volume);
-    int GetVolume(void);
-    int IncVolume(void);
+    void setup();
+    bool isValid(uint8_t volume);
+    int setVolume(uint8_t volume);
+    int getVolume(void);
+    int incVolume(void);
+    int decVolume(void);
 };
 
 #endif

@@ -35,21 +35,21 @@ class BiinoInput
 
   public:
     BiinoInput(uint8_t id, uint8_t channel_mask, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_channel);
-    void Setup();
-    void DeselectAll(void);
-    int Select(uint8_t channel);
+    void setup();
+    void deselectAll(void);
+    int select(uint8_t channel);
 
-    int SelectNext(void);
-    int SelectPrevious(void);
-    int SelectFirst(void);
-    int SelectLast(void);
+    int selectNext(void);
+    int selectPrevious(void);
+    int selectFirst(void);
+    int selectLast(void);
 
-    bool IsChannelValid(uint8_t channel);
-    uint8_t GetCurrentChannel(void);
-    int GetCurrentChannelNo(void);
+    bool isChannelValid(uint8_t channel);
+    uint8_t getCurrentChannel(void);
+    int getCurrentChannelNo(void);
 
   private:
-    int Select(bool next);
+    int select(bool next);
 };
 
 #endif
