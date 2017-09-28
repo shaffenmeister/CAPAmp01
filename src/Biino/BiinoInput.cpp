@@ -47,10 +47,9 @@ int BiinoInput::select(uint8_t channel)
           this->deselectAll();
         }
 
-      if(this->channel_switch_delay_ms > 0)
-        {
-          delay(this->channel_switch_delay_ms);
-        }
+      if(this->channel_switch_delay_ms > 0) {
+        delay(this->channel_switch_delay_ms);
+      }
 
       // Enable corresponding relais on channel.
       // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on

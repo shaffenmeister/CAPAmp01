@@ -28,7 +28,7 @@ class BiinoInput
     uint8_t biino_id; // more than one input boards supported, first = 0, second = 1, ...
     uint8_t channel_mask; // bit mask for all channels to be used. 
     uint8_t ee_addr_cur_channel; // EEPROM address to store and restore the last selected channel.
-    uint16_t channel_switch_delay_ms = 200; // delay when switching channels: old channel <deselect> - <delay> - new channel <select>
+    uint16_t channel_switch_delay_ms = 0; // delay when switching channels: old channel <deselect> - <delay> - new channel <select>
 
   protected:
     mcp23s08* biino_input; // reference to MCP23S08

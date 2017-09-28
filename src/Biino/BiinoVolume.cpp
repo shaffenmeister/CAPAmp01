@@ -4,7 +4,7 @@
 
 #include "BiinoVolume.h"
 
-BiinoVolume::BiinoVolume(uint8_t id, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_volume)
+BiinoVolume::BiinoVolume(uint8_t id, const uint8_t pin_cs, const uint8_t spi_addr, const uint8_t ee_addr_cur_volume)
 {
   this->biino_id = id;
   this->biino_volume = new mcp23s08(pin_cs,spi_addr,MAXSPISPEED);
@@ -29,17 +29,15 @@ bool BiinoVolume::isValid(uint8_t volume)
 
 int BiinoVolume::setVolume(uint8_t volume)
 {
-    if(this->isValid(volume))
-    {
-//      if(this->volume_switch_delay_ms > 0)
-//        {
-//          delay(this->volume_switch_delay_ms);
-//        }
+    if(this->isValid(volume)) {
+      if(this->volume_switch_delay_ms > 0) {
+        delay(this->volume_switch_delay_ms);
+      }
 
       // Enable corresponding relais on channel.
       // Inverse logic! 1 = relais off, 0 = relais on, 0xff = all off, 0x00 = all on
       // Inverse logic only used for direct output to / direct input from mcp23s08!
-      //this->biino_volume->gpioPort(~volume);
+      this->biino_volume->gpioPort(~volume);
 
       EEPROM.update(this->ee_addr_cur_volume,volume);
       return EXIT_SUCCESS;

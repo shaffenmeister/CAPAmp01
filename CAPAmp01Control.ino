@@ -20,6 +20,10 @@
 #include "src/Biino/BiinoChannel.h"
 #include "ir_codes_DNT_RC11.h"
 
+#define ENCODE_PARAMETER(cmd,param) ((cmd & 0xff) << 8 | (param & 0xff)
+#define GET_CMD(param) ((param >> 8) & 0xff)
+#define GET_PARAMETER(param) (param & 0xff)
+
 /*
  * Local functions
  */
@@ -58,7 +62,7 @@ const int ADDR_BIINO_VOL = 0x20;
 const int ADDR_BIINO_INP = 0x21;
 
 
-enum class RawEvents : int {
+enum class RawEvents : char {
   // An input button was pressed and released within BUTTON_TIMEOUT_MS, param: button id, e.g. PIN_ROT_BUTTON, PIN_BUTTON
   kEventButtonPressedShort,
   // An input button was pressed and held exceeding BUTTON_TIMEOUT_MS, param: button id, e.g. PIN_ROT_BUTTON, PIN_BUTTON
@@ -67,6 +71,8 @@ enum class RawEvents : int {
   kEventRotaryTurnTriggered,
   // 
   kEventUpdateDisplay,
+  //
+  kEventIrSignal,
   kEventIrAmpPower,
   kEventIrAmpMute,
   kEventIrVolumeUp,
@@ -321,7 +327,7 @@ void loop() {
           gRs232State = Rs232State::WAIT_FOR_CMD;
         break;
       case Rs232State::WAIT_FOR_CMD:
-        if(serbyte == 'm' || serbyte == 'p' || serbyte == 'i' || serbyte == 'v') {
+        if(serbyte == 'm' || serbyte == 'p' || serbyte == 'i' || serbyte == 'v' || serbyte == 'r') {
           gSerialBuffer.last_cmd = serbyte;
           gRs232State = Rs232State::WAIT_FOR_PARAMETER;
         }
@@ -344,18 +350,21 @@ void loop() {
           gRs232State = Rs232State::WAIT_FOR_SENTENCE_DELIMITER;
         }
         else
-        if(gSerialBuffer.last_cmd == 'v' && (serbyte >= '0' || serbyte <= '9' || serbyte == '$')) {
-          if(serbyte != '$') {
-            if(gSerialBuffer.ptr < 2) {
-              gSerialBuffer.last_param[gSerialBuffer.ptr++] = serbyte;
-            } 
-            else {
-              gRs232State = Rs232State::WAIT_FOR_SENTENCE_DELIMITER;
-            }
-          }
-          else {
-            gRs232State = Rs232State::SENTENCE_COMPLETE;
+        if(gSerialBuffer.last_cmd == 'v' && (serbyte >= '0' && serbyte <= '9')) {
+          if(gSerialBuffer.ptr < 2) {
+            gSerialBuffer.last_param[gSerialBuffer.ptr++] = serbyte;
           } 
+          else {
+            gRs232State = Rs232State::WAIT_FOR_SENTENCE_DELIMITER;
+          }
+        }
+        else
+        if(gSerialBuffer.last_cmd == 'r' && (serbyte == '0' || serbyte == '1')) {
+          gSerialBuffer.last_param[0] = serbyte;
+          gRs232State = Rs232State::WAIT_FOR_SENTENCE_DELIMITER;
+        }
+        else {
+          gRs232State = Rs232State::WAIT_FOR_SENTENCE_START;
         }
         break;
       case Rs232State::WAIT_FOR_SENTENCE_DELIMITER:
@@ -547,8 +556,8 @@ void rotary_listener( int event, int param )
       else if(param == 0) {
         gBiinoVolume.decVolume();
       }
-      else
-        gBiinoVolume.setVolume(0);
+//      else
+//        gBiinoVolume.setVolume(0);
       
       gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       break;
@@ -559,8 +568,8 @@ void rotary_listener( int event, int param )
       else if(param == 0) {
         gBiinoInput.selectPrevious();
       }
-      else
-        gBiinoInput.selectFirst();
+//      else
+//        gBiinoInput.selectFirst();
         
       gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       break;
