@@ -1,6 +1,9 @@
 #ifndef IR_CODES_DNT_RC11_H
 
+const unsigned long IR_DNT_RC11_CMD_TIMEOUT_MS = 150;
+
 enum class ir_codes_dnt_rc11 : unsigned long {
+          INVALID                = 0x00000000,
           KEY_PLAY               = 0x00FF20DF,
           KEY_STOP               = 0x00FFA05F,
           KEY_POWER              = 0x00FFB24D,

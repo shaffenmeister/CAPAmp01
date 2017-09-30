@@ -4,7 +4,7 @@
 
 #include "BiinoVolume.h"
 
-BiinoVolume::BiinoVolume(uint8_t id, const uint8_t pin_cs, const uint8_t spi_addr, const uint8_t ee_addr_cur_volume)
+BiinoVolume::BiinoVolume(uint8_t id, uint8_t pin_cs, uint8_t spi_addr, uint8_t ee_addr_cur_volume)
 {
   this->biino_id = id;
   this->biino_volume = new mcp23s08(pin_cs,spi_addr,MAXSPISPEED);
@@ -21,7 +21,7 @@ void BiinoVolume::setup(void)
 
 bool BiinoVolume::isValid(uint8_t volume)
 {
-  if(volume >= 0 && volume <= 63)
+  if(volume >= BiinoVolume::min_volume && volume <= BiinoVolume::max_volume)
     return true;
 
   return false;

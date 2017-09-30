@@ -3,6 +3,7 @@
  */
 #include <EEPROM.h>
 #include <SPI.h>
+#include <avr/pgmspace.h>
 
 /*
  * Custom libraries
@@ -10,6 +11,7 @@
 #include <U8g2lib.h>
 #include <mcp23s08.h>
 #include <EventManager.h>
+#include <TimerOne.h>
 
 /*
  * Own sources
@@ -18,11 +20,9 @@
 #include "src/Biino/BiinoInput.h"
 #include "src/Biino/BiinoVolume.h"
 #include "src/Biino/BiinoChannel.h"
-#include "ir_codes_DNT_RC11.h"
-
-#define ENCODE_PARAMETER(cmd,param) ((cmd & 0xff) << 8 | (param & 0xff)
-#define GET_CMD(param) ((param >> 8) & 0xff)
-#define GET_PARAMETER(param) (param & 0xff)
+#include "includes/ir/ir_codes_DNT_RC11.h"
+#include "includes/xbm/duck-bw-64x64.h"
+//#include "xbm/squirrel-bw-67x64.h"
 
 /*
  * Local functions
@@ -47,8 +47,8 @@ const int PIN_REL2 = 7; // 7, D7 (PD7)
 const int PIN_POT = A2; // 16, A2 (PC2)
 const int PIN_BUTTON = A3; // 17, A3 (PC3)
 const int PIN_IR_RCV = 2; // 2, D2, INT0 (PD2)
-const int PIN_ROT_STEP = 3; // 3, D3, INT1 (PD3)
-const int PIN_ROT_DIR = 4; // 4, D4 (PD4)
+const int PIN_ROT_A = 4; // 4, D4 (PD4)
+const int PIN_ROT_B = 3; // 3, D3, INT1 (PD3)
 const int PIN_ROT_BUTTON = 8; // 8, D8 (PB0)
 
 const int INPUT_CHANNEL_CNT = 3;
@@ -61,27 +61,33 @@ const int EE_BIINO_VOL_END = EE_BIINO_VOL_START + INPUT_CHANNEL_CNT - 1;
 const int ADDR_BIINO_VOL = 0x20;
 const int ADDR_BIINO_INP = 0x21;
 
-
-enum class RawEvents : char {
+enum class RawEvents : int {
   // An input button was pressed and released within BUTTON_TIMEOUT_MS, param: button id, e.g. PIN_ROT_BUTTON, PIN_BUTTON
-  kEventButtonPressedShort,
+  kEventButtonPressedShort = 1,
   // An input button was pressed and held exceeding BUTTON_TIMEOUT_MS, param: button id, e.g. PIN_ROT_BUTTON, PIN_BUTTON
-  kEventButtonPressedLong,
+  kEventButtonPressedLong = 2,
   // The rotary button was turned, param: DIRECTION (1 or 0)
-  kEventRotaryTurnTriggered,
+  kEventRotaryTurnTriggered = 3,
   // 
-  kEventUpdateDisplay,
+  kEventUpdateDisplay = 4,
   //
-  kEventIrSignal,
-  kEventIrAmpPower,
-  kEventIrAmpMute,
-  kEventIrVolumeUp,
-  kEventIrVolumeDown,
-  kEventVolumeSet,
-  kEventIrInputSelectPrev,
-  kEventIrInputSelectNext,
-  kEventIrInputSelectId
-  };
+  kEventAmpControl = 5,
+  kEventVolumeControl = 6,
+  kEventInputControl = 7,
+  //
+  kEventAmpPowerOn = -1,
+  kEventAmpPowerOff = -2,
+  kEventAmpMute = -3,
+  kEventAmpUnMute = -4,
+  kEventAmpRelaisOn = -5,
+  kEventAmpRelaisOff = -6,
+  kEventAmpPowerToggle = -7,
+  kEventAmpMuteToggle = -8,
+  kEventVolumeUp = -9,
+  kEventVolumeDown = -10,
+  kEventInputSelectPrev = -11,
+  kEventInputSelectNext = -12
+};
   
 enum class SysState : int8_t {
   INVALID = -1,
@@ -106,8 +112,11 @@ enum class Rs232State : int8_t {
  */
 IRrecv gIrReceiver(PIN_IR_RCV);
 decode_results results;
-U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI u8g2(U8G2_R0, PIN_CS_DISP, PIN_DC_DISP, PIN_RESET_DISP);
 EventManager gMyEventManager;
+
+U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI u8g2(U8G2_R0, PIN_CS_DISP, PIN_DC_DISP, PIN_RESET_DISP);
+const static uint8_t* default_font = u8g2_font_inb19_mr;
+const static uint8_t* big_font = u8g2_font_inb27_mn; // 27,33,38
 
 static struct {
   bool last_state = LOW;
@@ -115,7 +124,7 @@ static struct {
   bool active = false;
   unsigned long tstart_ms;
   unsigned long tcur_ms;
-  } gButtonState[2];
+} gButtonState[2];
 
 
 // May save 16 bytes of RAM when defined within loop!
@@ -130,7 +139,7 @@ static struct {
   char last_cmd = 0;
   char last_param[3] = {0,0,0};
   char ptr = 0;
-  unsigned long ser_tlast_ms = 0;
+  unsigned long tlast_ms = 0;
 } gSerialBuffer;
 
 SysState gState = SysState::AMP_OFF;
@@ -139,19 +148,12 @@ Rs232State gRs232State = Rs232State::WAIT_FOR_SENTENCE_START;
 BiinoInput gBiinoInput(0,(uint8_t)((1<<INPUT_CHANNEL_CNT) - 1),PIN_CS_BIINO_VOL,ADDR_BIINO_INP,EE_BIINO_CHAN);
 BiinoVolume gBiinoVolume(0,PIN_CS_BIINO_VOL,ADDR_BIINO_VOL,EE_BIINO_VOL);
 
-BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
-  BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START, &gBiinoInput), 
-  BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1, &gBiinoInput),
-  BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2, &gBiinoInput)
+BiinoChannel gBiinoChannels[INPUT_CHANNEL_CNT] = { 
+  BiinoChannel(0,"CD Player", "CD", EE_BIINO_VOL_START), 
+  BiinoChannel(1,"Network Player", "NET", EE_BIINO_VOL_START + 1),
+  BiinoChannel(2,"Auxiliary", "AUX", EE_BIINO_VOL_START + 2)
 };
 
-/*
-BiinoChannel channels[INPUT_CHANNEL_CNT] = { 
-  BiinoChannel(0,"Network Player", "NET", EE_BIINO_VOL_START), 
-  BiinoChannel(1,"Auxiliary 1", "AUX 1", EE_BIINO_VOL_START + 1),
-  BiinoChannel(2,"Auxiliary 2", "AUX 2", EE_BIINO_VOL_START + 2)
-};
-*/
 
 void setup() {
   // Setup digital I/O pin directions
@@ -165,8 +167,8 @@ void setup() {
   pinMode(PIN_REL2,OUTPUT);  
   pinMode(PIN_BUTTON,INPUT);
   digitalWrite(PIN_BUTTON,HIGH);
-  pinMode(PIN_ROT_STEP,INPUT);  
-  pinMode(PIN_ROT_DIR,INPUT);
+  pinMode(PIN_ROT_A,INPUT);  
+  pinMode(PIN_ROT_B,INPUT);
   pinMode(PIN_ROT_BUTTON,INPUT);
   digitalWrite(PIN_ROT_BUTTON,HIGH);
 
@@ -187,38 +189,30 @@ void setup() {
   gBiinoInput.setup();
   gBiinoVolume.setup();
 
-  // Init event manager (16 listeners max)
+  // Init event manager (8 listeners max)
   gMyEventManager.addListener( (int)RawEvents::kEventButtonPressedShort, button_listener );
   gMyEventManager.addListener( (int)RawEvents::kEventButtonPressedLong, button_listener );
   gMyEventManager.addListener( (int)RawEvents::kEventRotaryTurnTriggered, rotary_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrAmpPower, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrAmpMute, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrVolumeUp, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrVolumeDown, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrInputSelectPrev, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrInputSelectNext, ir_listener );
-  gMyEventManager.addListener( (int)RawEvents::kEventIrInputSelectId, ir_listener );
+  gMyEventManager.addListener( (int)RawEvents::kEventAmpControl, amp_listener );
+  gMyEventManager.addListener( (int)RawEvents::kEventInputControl, biino_listener );
+  gMyEventManager.addListener( (int)RawEvents::kEventVolumeControl, biino_listener );
   gMyEventManager.addListener( (int)RawEvents::kEventUpdateDisplay, display_listener );
 
-  // Setup Rotary encoder
-  attachInterrupt(digitalPinToInterrupt(PIN_ROT_STEP),read_rotary,FALLING);
-  
-  // Assign pin change interrupts
+  // Setup buttons: Assign pin change interrupts
   pciSetup(PIN_BUTTON);
   pciSetup(PIN_ROT_BUTTON);
   
   // Setup IR receiver
   gIrReceiver.enableIRIn();
-  
+
+  // Setup rotary encoder
+  encoder_init();
+  Timer1.initialize(1000);
+  Timer1.attachInterrupt(timer1_isr);
+
   // Init display
   u8g2.begin();
-  u8g2.firstPage();
-  do {
-    u8g2.setFont(u8g2_font_inb19_mf); //u8g2_font_ncenB14_tr);
-    u8g2.drawStr(0,24,"Welcome!");
-    u8g2.drawStr(0,63,">>>><<<<");
-  } while ( u8g2.nextPage() );
-  delay(2000);
+  
   gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
 }
 
@@ -227,9 +221,19 @@ void setup() {
  */
 void loop() {
   unsigned long tcur_ms = 0;
-  
+  int delta = 0;
+
   tcur_ms = millis();
 
+  /*  
+   * Process Encoder commands
+   */
+  delta = encoder1_read4();
+
+  if(delta != 0) {
+    gMyEventManager.queueEvent( (int)RawEvents::kEventRotaryTurnTriggered, delta);
+  }
+  
   /*  
    * Process IR commands
    */
@@ -241,47 +245,60 @@ void loop() {
           gIrState.last_cmd = results.value;
           gIrState.tfirst_ms = tcur_ms;
           gIrState.cmd_cnt = 1;
+          gIrState.tlast_ms = tcur_ms;
         }
         else {
-          // Repeat
-          gIrState.cmd_cnt++;  
+          if( abs(tcur_ms - gIrState.tlast_ms) >= IR_DNT_RC11_CMD_TIMEOUT_MS && gIrState.cmd_cnt == 1) {
+            // We assume to have missed the transmission of a new command, if the first repetition
+            //   after receiving the last command took place late.
+            gIrState.last_cmd = 0;      
+          } 
+          else {
+            // Repeat command
+            gIrState.cmd_cnt++;  
+            gIrState.tlast_ms = tcur_ms;
+          }
         }
-
-        gIrState.tlast_ms = tcur_ms;
 
         switch(gIrState.last_cmd) {
           case (unsigned long) ir_codes_dnt_rc11::KEY_VOLUMEUP:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrVolumeUp, gIrState.cmd_cnt);
+            gMyEventManager.queueEvent( (int)RawEvents::kEventVolumeControl, (int)RawEvents::kEventVolumeUp );
             break;
           case (unsigned long) ir_codes_dnt_rc11::KEY_VOLUMEDOWN:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrVolumeDown, gIrState.cmd_cnt );
+            gMyEventManager.queueEvent( (int)RawEvents::kEventVolumeControl, (int)RawEvents::kEventVolumeDown );
             break;
           case (unsigned long) ir_codes_dnt_rc11::KEY_POWER:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrAmpPower, gIrState.cmd_cnt );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpPowerToggle );
             break;
           case (unsigned long) ir_codes_dnt_rc11::KEY_MUTE:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrAmpMute, gIrState.cmd_cnt );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpMuteToggle );
             break;
           case (unsigned long) ir_codes_dnt_rc11::KEY_DOWN:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrInputSelectPrev, gIrState.cmd_cnt );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, (int)RawEvents::kEventInputSelectPrev );
             break;
           case (unsigned long) ir_codes_dnt_rc11::KEY_UP:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrInputSelectNext, gIrState.cmd_cnt );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, (int)RawEvents::kEventInputSelectNext );
             break;                        
           case (unsigned long) ir_codes_dnt_rc11::KEY_1:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrInputSelectId, 1 );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, 1 );
             break;                        
           case (unsigned long) ir_codes_dnt_rc11::KEY_2:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrInputSelectId, 2 );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, 2 );
             break;                        
           case (unsigned long) ir_codes_dnt_rc11::KEY_3:
-            gMyEventManager.queueEvent( (int)RawEvents::kEventIrInputSelectId, 3 );
+            if(gIrState.cmd_cnt == 1)
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, 3 );
             break;                        
-        }
-
-      }
+        } // switch
+      } 
     }
-    
+
     gIrReceiver.resume();
   }
 
@@ -352,11 +369,12 @@ void loop() {
         else
         if(gSerialBuffer.last_cmd == 'v' && (serbyte >= '0' && serbyte <= '9')) {
           if(gSerialBuffer.ptr < 2) {
-            gSerialBuffer.last_param[gSerialBuffer.ptr++] = serbyte;
+            gSerialBuffer.last_param[gSerialBuffer.ptr] = serbyte;
+            gSerialBuffer.ptr++;
           } 
-          else {
+          
+          if(gSerialBuffer.ptr >= 2)
             gRs232State = Rs232State::WAIT_FOR_SENTENCE_DELIMITER;
-          }
         }
         else
         if(gSerialBuffer.last_cmd == 'r' && (serbyte == '0' || serbyte == '1')) {
@@ -376,10 +394,30 @@ void loop() {
         if(gRs232State == Rs232State::SENTENCE_COMPLETE) {
           switch(gSerialBuffer.last_cmd) {
             case 'p':
-                gMyEventManager.queueEvent( (int)RawEvents::kEventIrAmpPower, 1 );
+              if(gSerialBuffer.last_param[0] == '0')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpPowerOff );
+              else
+              if(gSerialBuffer.last_param[0] == '1')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpPowerOn );
               break;
             case 'm':
-                gMyEventManager.queueEvent( (int)RawEvents::kEventIrAmpMute, 1 );
+              if(gSerialBuffer.last_param[0] == '0')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpUnMute );
+              else
+              if(gSerialBuffer.last_param[0] == '1')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventAmpControl, (int)RawEvents::kEventAmpMute );
+              break;
+            case 'i':
+              gMyEventManager.queueEvent( (int)RawEvents::kEventInputControl, (int)(gSerialBuffer.last_param[0] - '0') );
+              break;
+            case 'v':
+              if(gSerialBuffer.last_param[0] == '+')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventVolumeControl, (int)RawEvents::kEventVolumeUp );                
+              else
+              if(gSerialBuffer.last_param[0] == '-')
+                gMyEventManager.queueEvent( (int)RawEvents::kEventVolumeControl, (int)RawEvents::kEventVolumeDown );                
+              else
+                gMyEventManager.queueEvent( (int)RawEvents::kEventVolumeControl, atoi(gSerialBuffer.last_param) );                
               break;
           }
         } 
@@ -390,17 +428,137 @@ void loop() {
         gSerialBuffer.last_param[2] = 0;
         gSerialBuffer.ptr = 0;
         gRs232State = Rs232State::WAIT_FOR_SENTENCE_START; 
-        break;
     }
-    Serial.println((int8_t)gRs232State,DEC);
-    
-  } // Serial.Available > 0
+  } // if(Serial.available() > 0)
 
+  
   /*
    * Process event queue
    */
   gMyEventManager.processEvent();
   
+}
+
+/*
+ * Sys state transitions
+ */
+//SysState set_state(SysState newState)
+//{
+//  if(newState == gState)
+//    return gState;
+//
+//  switch(newState) {
+//    case SysState::INITIAL:
+//      // TODO
+//      break;
+//    case SysState::AMP_MUTE:
+//      amp_mute();
+//      gState = newState;
+//      gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+//      break;
+//    case SysState::AMP_OFF:
+//      amp_off();
+//      break;
+//    case SysState::RUNNING_MODE_VOL:
+//      amp_mute();
+//      gState = SysState::AMP_MUTE;
+//      gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+//      break;
+//    case SysState::RUNNING_MODE_INP:
+//      amp_mute();
+//      gState = SysState::AMP_MUTE;
+//      gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+//      break;
+//    default:
+//      // Do nothing.
+//      break;
+//  }
+//}
+
+/*
+ * Plot Functions
+ */
+//const char decibels[64][6] PROGMEM = {"-75.6\0", "-74.4\0", "-73.2\0", "-72.0\0", "-70.8\0", "-69.6\0", "-68.4\0", "-67.2\0", "-66.0\0", "-64.8\0", "-63.6\0", "-62.4\0", "-61.2\0", "-60.0\0", "-58.8\0", "-57.6\0", "-56.4\0", "-55.2\0", "-54.0\0", "-52.8\0", "-51.6\0", "-50.4\0", "-49.2\0", "-48.0\0", "-46.8\0", "-45.6\0", "-44.4\0", "-43.2\0", "-42.0\0", "-40.8\0", "-39.6\0", "-38.4\0", "-37.2\0", "-36.0\0", "-34.8\0", "-33.6\0", "-32.4\0", "-31.2\0", "-30.0\0", "-28.8\0", "-27.6\0", "-26.4\0", "-25.2\0", "-24.0\0", "-22.8\0", "-21.6\0", "-20.4\0", "-19.2\0", "-18.0\0", "-16.8\0", "-15.6\0", "-14.4\0", "-13.2\0", "-12.0\0", "-10.8\0", " -9.6\0", " -8.4\0", " -7.2\0", " -6.0\0", " -4.8\0", " -3.6\0", " -2.4\0", " -1.2\0", " -0.0\0"};
+
+void plot_main(int8_t highlight,int8_t volume, int8_t input)
+{
+  //static const char* mtext[INPUT_CHANNEL_CNT] = {"CD\0","NET\0","AUX\0"};
+  
+  if(gState == SysState::AMP_OFF || gState == SysState::AMP_MUTE)
+  {
+    u8g2.firstPage();
+    do {
+      u8g2.drawXBMP(0,0,64,64,duck_bw_64x64_bits);
+      //u8g2.drawXBMP(0,0,67,64,squirrel_bw_67x64_bits);
+      u8g2.setFont(default_font);
+      u8g2.setFontPosTop();
+      u8g2.setCursor(55,40);
+      //u8g2.drawTriangle(0,0,8,10,0,20);
+      if(gState == SysState::AMP_OFF)
+        u8g2.print("Off.");
+      else
+        u8g2.print("Mute.");
+    } while ( u8g2.nextPage() );  
+  }
+  else {
+    u8g2.firstPage();
+    do {
+      u8g2.setFont(default_font);
+      u8g2.setFontPosTop();
+      u8g2.setCursor(12,0);
+      if(input >= 1 && input <= INPUT_CHANNEL_CNT) {
+        if(highlight == 1)
+          u8g2.drawTriangle(0,0,8,10,0,20);
+        u8g2.print(gBiinoChannels[input-1].title_short);
+      }
+  
+      u8g2.drawStr(127-40,0,"db"); // 63-37
+      
+      if(highlight == 2)
+        u8g2.drawTriangle(0,63-37-1,8,63-37+13,0,63-37+26+1);
+  
+      u8g2.setFont(big_font);
+      u8g2.setCursor(10,63-37);
+//      u8g2.print(volume,DEC);
+          
+      float db = -1*(gBiinoVolume.max_volume-volume)*1.2;
+      char val[7];
+      dtostrf(db, 5, 1,val);
+      
+      u8g2.print(val);
+  
+    } while ( u8g2.nextPage() );  
+  }
+}
+ 
+/*
+ * Rotary encoder 1 functionality
+ */
+volatile int8_t enc1_delta; // -128 ... 127
+static int8_t enc1_last;
+
+// Init encoder functionality
+void encoder_init( void )
+{
+  int8_t cval;
+
+  cval = 0;
+  if( digitalRead(PIN_ROT_A) ) cval = 3;
+  if( digitalRead(PIN_ROT_B) ) cval ^= 1;     // convert gray to binary
+  enc1_last = cval;                           // power on state
+  enc1_delta = 0;
+}
+
+// Read 4 step encoder status, call this at least at 8 Hz in loop()
+int8_t encoder1_read4( void )
+{
+  int8_t val;
+
+  cli();
+  val = enc1_delta;
+  enc1_delta = val & 3;
+  sei();
+  return val >> 2;
 }
 
 /*
@@ -427,6 +585,11 @@ void amp_on()
 }
 
 void rpi_on()
+{
+  digitalWrite(PIN_REL2,1);
+}
+
+void rpi_off()
 {
   digitalWrite(PIN_REL2,1);
 }
@@ -539,6 +702,8 @@ void button_listener( int event, int param )
     
 void rotary_listener( int event, int param )
 {
+  int8_t curvol;
+  
   switch(gState) {
     case SysState::INITIAL:
       // TODO
@@ -550,26 +715,24 @@ void rotary_listener( int event, int param )
       // Do nothing.
       break;
     case SysState::RUNNING_MODE_VOL:
-      if(param == 1) {
-        gBiinoVolume.incVolume();
-      }
-      else if(param == 0) {
-        gBiinoVolume.decVolume();
-      }
-//      else
-//        gBiinoVolume.setVolume(0);
+      curvol = gBiinoVolume.getVolume() + (int8_t) param;
+      if(curvol < BiinoVolume::min_volume)
+        gBiinoVolume.setVolume(BiinoVolume::min_volume);
+      else
+      if(curvol > BiinoVolume::max_volume)
+        gBiinoVolume.setVolume(BiinoVolume::max_volume);
+      else
+        gBiinoVolume.setVolume(curvol);
       
       gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       break;
     case SysState::RUNNING_MODE_INP:
-      if(param == 1) {
+      if(param > 0) {
         gBiinoInput.selectNext();
       }
-      else if(param == 0) {
+      else if(param < 0) {
         gBiinoInput.selectPrevious();
       }
-//      else
-//        gBiinoInput.selectFirst();
         
       gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       break;
@@ -579,79 +742,122 @@ void rotary_listener( int event, int param )
   }
 }
 
-void ir_listener( int event, int param ) {
-  switch(event) {
-    case (int)RawEvents::kEventIrAmpPower:
-      if(gState != SysState::AMP_OFF && param == 1) {
+void amp_listener(int event, int param) {
+  if(event != (int)RawEvents::kEventAmpControl)
+    return;
+
+  if(param == (int)RawEvents::kEventAmpPowerToggle) {
+      if(gState == SysState::AMP_OFF)
+        param = (int)RawEvents::kEventAmpPowerOn;
+      else
+        param = (int)RawEvents::kEventAmpPowerOff;
+  }
+  else
+  if(param == (int)RawEvents::kEventAmpMuteToggle) {
+      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP))
+        param = (int)RawEvents::kEventAmpMute;
+      else
+        param = (int)RawEvents::kEventAmpUnMute;
+  }
+  
+  switch(param) {
+    case (int)RawEvents::kEventAmpPowerOff:
+      if(gState != SysState::AMP_OFF) {
         amp_off();
         gState = SysState::AMP_OFF;
         gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       }
-      else
-      if(gState == SysState::AMP_OFF && param == 1) {
+      break;
+    case (int)RawEvents::kEventAmpPowerOn:
+      if(gState == SysState::AMP_OFF) {
         amp_on();
         amp_unmute();
         gState = SysState::RUNNING_MODE_VOL;
         gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       }
       break;
-    case (int)RawEvents::kEventIrAmpMute:
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP) && param == 1) {
+    case (int)RawEvents::kEventAmpMute:
+      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
         amp_mute();
         gState = SysState::AMP_MUTE;
         gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       }
-      else
-      if(gState == SysState::AMP_MUTE && param == 1) {
+      break;
+    case (int)RawEvents::kEventAmpUnMute:
+      if(gState == SysState::AMP_MUTE) {
         amp_unmute();
         gState = SysState::RUNNING_MODE_VOL;
         gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
       }
       break;
-    case (int)RawEvents::kEventIrVolumeUp:
-      if(gState == SysState::AMP_MUTE && param == 1) {
-        amp_unmute();
-        gState = SysState::RUNNING_MODE_VOL;
-        gBiinoVolume.incVolume();
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }
-      else
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP) && param >= 1) {
-        gState = SysState::RUNNING_MODE_VOL;
-        gBiinoVolume.incVolume();
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }
+    case (int)RawEvents::kEventAmpRelaisOn:
+        rpi_on();
       break;
-    case (int)RawEvents::kEventIrVolumeDown:
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP) && param >= 1) {
-        gState = SysState::RUNNING_MODE_VOL;
-        gBiinoVolume.decVolume();
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }
+    case (int)RawEvents::kEventAmpRelaisOff:
+        rpi_off();
       break;
-    case (int)RawEvents::kEventIrInputSelectNext:
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP) && param == 1) {
-        gState = SysState::RUNNING_MODE_INP;
-        gBiinoInput.selectNext();
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }    
-      break;
-    case (int)RawEvents::kEventIrInputSelectPrev:
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP) && param == 1) {
-        gState = SysState::RUNNING_MODE_INP;
-        gBiinoInput.selectPrevious();
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }    
-      break;
-    case (int)RawEvents::kEventIrInputSelectId:
-      if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
-        gState = SysState::RUNNING_MODE_INP;
-        gBiinoInput.select((uint8_t)(1 << (param-1)));
-        gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
-      }    
-      break;      
-    default:
-      break;
+  }
+}
+
+void biino_listener( int event, int param ) {
+  if(event == (int)RawEvents::kEventVolumeControl) {
+    switch(param) {
+      case (int)RawEvents::kEventVolumeUp:
+        if(gState == SysState::AMP_MUTE) {
+          amp_unmute();
+          gState = SysState::RUNNING_MODE_VOL;
+          gBiinoVolume.incVolume();
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }
+        else
+        if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_VOL;
+          gBiinoVolume.incVolume();
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }
+        break;
+      case (int)RawEvents::kEventVolumeDown:
+        if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_VOL;
+          gBiinoVolume.decVolume();
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }
+        break;
+      default:
+        if( (param >= BiinoVolume::min_volume && param <=  BiinoVolume::max_volume) &&
+            (gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_VOL;
+          gBiinoVolume.setVolume((uint8_t)param);
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }
+        break;
+    } // switch
+  }
+  else
+  if(event == (int)RawEvents::kEventInputControl) {
+    switch(param) {
+      case (int)RawEvents::kEventInputSelectNext:
+        if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_INP;
+          gBiinoInput.selectNext();
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }    
+        break;
+      case (int)RawEvents::kEventInputSelectPrev:
+        if((gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_INP;
+          gBiinoInput.selectPrevious();
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }    
+        break;
+      default:
+        if(param >= 1 && param <= 3 && (gState == SysState::RUNNING_MODE_VOL || gState == SysState::RUNNING_MODE_INP)) {
+          gState = SysState::RUNNING_MODE_INP;
+          gBiinoInput.select((uint8_t)(1 << (param-1)));
+          gMyEventManager.queueEvent( (int)RawEvents::kEventUpdateDisplay, 0 );
+        }    
+        break;      
+    } // switch   
   }
 }
 
@@ -661,38 +867,16 @@ void display_listener( int event, int param ) {
       // TODO
       break;
     case SysState::AMP_MUTE:
-      u8g2.firstPage();
-      do {
-        u8g2.setFont(u8g2_font_inb19_mf);
-        u8g2.drawStr(0,24,"Mute");
-      } while ( u8g2.nextPage() );
+      plot_main(0,0,0);
       break;
     case SysState::AMP_OFF:
-      u8g2.firstPage();
-      do {
-        u8g2.setFont(u8g2_font_inb19_mf);
-        u8g2.drawStr(0,24,"Off");
-      } while ( u8g2.nextPage() );
+      plot_main(0,0,0);
       break;
     case SysState::RUNNING_MODE_VOL:
-      u8g2.firstPage();
-      do {
-        u8g2.setFont(u8g2_font_inb19_mf);
-        u8g2.setCursor(0,24);
-        u8g2.print("VOL: ");
-        u8g2.print(gBiinoVolume.getVolume(),DEC);
-//        u8g2.print("ROM: ");
-//        u8g2.print(EEPROM[gBiinoVolume.ee_addr_cur_volume],DEC);
-      } while ( u8g2.nextPage() );
+      plot_main(2,gBiinoVolume.getVolume(),gBiinoInput.getCurrentChannelNo());
       break;
     case SysState::RUNNING_MODE_INP:
-      u8g2.firstPage();
-      do {
-        u8g2.setFont(u8g2_font_inb19_mf);
-        u8g2.setCursor(0,24);
-        u8g2.print("INP: ");
-        u8g2.print(gBiinoInput.getCurrentChannelNo(),DEC);
-      } while ( u8g2.nextPage() );
+      plot_main(1,gBiinoVolume.getVolume(),gBiinoInput.getCurrentChannelNo());
       break;
     default:
       // Do nothing.
@@ -704,11 +888,25 @@ void display_listener( int event, int param ) {
 /*
  * Interrupt routines
  */
-void read_rotary(void)
-{
-  gMyEventManager.queueEvent( (int)RawEvents::kEventRotaryTurnTriggered, digitalRead(PIN_ROT_DIR));
-}
 
+/*
+ * Timer1 interrupt routine
+ */
+void timer1_isr(void)
+{
+  int8_t cval = 0, diff = 0;
+
+  cval = 0;
+  if( digitalRead(PIN_ROT_A) ) cval = 3;
+  if( digitalRead(PIN_ROT_B) ) cval ^= 1 ;  // convert gray to binary
+  
+  diff = enc1_last - cval;                  // difference last - new
+  if( diff & 1 ) {                          // bit 0 = value (1)
+    enc1_last = cval;                       // store new as next last
+    enc1_delta += (diff & 2) - 1;           // bit 1 = direction (+/-)
+  }  
+}
+ 
 /*
  * Port B PCINT (D8 to D13, PCINT0 to PCINT7, PB0 to PB7)
  */

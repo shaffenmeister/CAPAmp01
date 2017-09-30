@@ -1,6 +1,10 @@
+#include <stdio.h>
+#include <string.h>
+#include <inttypes.h>
+
 #include "BiinoChannel.h"
 
-BiinoChannel::BiinoChannel(uint8_t id, String title, String title_short, uint8_t ee_addr_volume, BiinoInput* biino_input)
+BiinoChannel::BiinoChannel(const uint8_t id, const String title, const String title_short, const uint8_t ee_addr_volume, BiinoInput* biino_input)
 {
   this->id = id;
   this->title = title;
@@ -9,7 +13,7 @@ BiinoChannel::BiinoChannel(uint8_t id, String title, String title_short, uint8_t
   this->biino_input = biino_input;
 }
 
-BiinoChannel::BiinoChannel(uint8_t id, String title, String title_short, uint8_t ee_addr_volume) : BiinoChannel(id, title, title_short, ee_addr_volume, NULL)
+BiinoChannel::BiinoChannel(const uint8_t id, const String title, const String title_short, const uint8_t ee_addr_volume) : BiinoChannel(id, title, title_short, ee_addr_volume, NULL)
 {
   
 }

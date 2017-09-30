@@ -27,7 +27,7 @@ class BiinoChannel
     uint8_t ee_addr_volume; // EEPROM address to store and restore the assigned volume.
     BiinoInput* biino_input = NULL;
   public:
-    BiinoChannel(uint8_t id, String title, String title_short, uint8_t ee_addr, BiinoInput* biino_input);
-    BiinoChannel(uint8_t id, String title, String title_short, uint8_t ee_addr );    
+    BiinoChannel(uint8_t id, const String title, const String title_short, const uint8_t ee_addr, BiinoInput* biino_input);
+    BiinoChannel(uint8_t id, const String title, const String title_short, const uint8_t ee_addr );    
 };
 #endif
