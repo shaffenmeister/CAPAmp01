@@ -10,13 +10,13 @@
  */
 #include <U8g2lib.h>
 #include <mcp23s08.h>
-#include <EventManager.h>
 #include <TimerOne.h>
+#include <EventManager.h>
+#include "includes/ir/IRremoteCAP.h" // load IRremote library with custom protocol support
 
 /*
  * Own sources
  */
-#include "src/IRremote/IRremoteCAP.h"
 #include "src/Biino/BiinoInput.h"
 #include "src/Biino/BiinoVolume.h"
 #include "src/Biino/BiinoChannel.h"
